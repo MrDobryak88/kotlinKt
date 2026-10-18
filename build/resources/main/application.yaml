@@ -1,0 +1,12 @@
+ktor:
+  deployment:
+    port: 8080
+  application:
+    modules:
+      - com.example.MainKt.module
+# Настройки JWT
+jwt:
+  secret: "my-super-secret-key-12345" # Секретная строка для подписи токенов
+  issuer: "[http://0.0.0.0:8080/](http://0.0.0.0:8080/)"
+  audience: "[http://0.0.0.0:8080/users](http://0.0.0.0:8080/users)"
+  realm: "LabTech Server"
