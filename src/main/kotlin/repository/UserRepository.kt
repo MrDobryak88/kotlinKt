@@ -8,5 +8,5 @@ interface UserRepository {
     suspend fun getHash(email: String): String?
     suspend fun findById(id: Int): User?
     suspend fun remove(id: Int)
-
+    suspend fun hasUsers(): Boolean
 }

@@ -4,9 +4,18 @@ ktor:
   application:
     modules:
       - com.example.MainKt.module
+
+# Подключение к БД. Значения можно переопределить переменными окружения
+# (синтаксис "$ИМЯ:значение_по_умолчанию"), чтобы не хранить секреты в репозитории.
+db:
+  url: "$DB_URL:jdbc:postgresql://localhost:5432/lab_db"
+  driver: "org.postgresql.Driver"
+  user: "$DB_USER:postgres"
+  password: "$DB_PASSWORD:54368"
+
 # Настройки JWT
 jwt:
-  secret: "my-super-secret-key-12345" # Секретная строка для подписи токенов
-  issuer: "[http://0.0.0.0:8080/](http://0.0.0.0:8080/)"
-  audience: "[http://0.0.0.0:8080/users](http://0.0.0.0:8080/users)"
+  secret: "$JWT_SECRET:my-super-secret-key-12345" # Секретная строка для подписи токенов
+  issuer: "http://0.0.0.0:8080/"
+  audience: "http://0.0.0.0:8080/users"
   realm: "LabTech Server"

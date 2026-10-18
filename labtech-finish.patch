@@ -1,0 +1,1528 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..5248f24
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,8 @@
++.gradle/
++build/
++out/
++*.iml
++.idea/workspace.xml
++.idea/shelf/
++.kotlin/
++*.log
+diff --git a/README.md b/README.md
+index bee03b9..f5f15fa 100644
+--- a/README.md
++++ b/README.md
+@@ -1,34 +1,80 @@
+-# ktor-nichosebe
++# LabTech Server
+ 
+-This project was created using the [Ktor Project Generator](https://start.ktor.io).
++REST-сервер на Ktor (Kotlin) для учёта лабораторного оборудования: регистрация и вход по JWT,
++роли `ADMIN` / `USER`, управление пользователями и каталогом оборудования. Данные хранятся в PostgreSQL (Exposed ORM).
+ 
+-Here are some useful links to get you started:
+- * [Ktor Documentation](https://ktor.io/docs/home.html)
+- * [Ktor GitHub page](https://github.com/ktorio/ktor)
+- * [Ktor Slack chat](https://app.slack.com/client/T09229ZC6/C0A974TJ9). [Request an invite](https://surveys.jetbrains.com/s3/kotlin-slack-sign-up).
++## Запуск
+ 
++Нужны JDK 21 и PostgreSQL с базой `lab_db`. Таблицы создаются автоматически при старте.
+ 
+-## Features
+-Here's a list of features included in this project:
++```bash
++./gradlew run      # запуск сервера на http://localhost:8080
++./gradlew test     # тесты (БД не нужна, используется H2 в памяти)
++./gradlew build    # сборка
++```
++
++### Настройки
++
++Значения по умолчанию лежат в `src/main/resources/application.yaml`.
++Любое из них можно переопределить переменной окружения, не меняя файл:
++
++| Переменная     | Что задаёт                | По умолчанию                               |
++|----------------|---------------------------|--------------------------------------------|
++| `DB_URL`       | JDBC-адрес базы           | `jdbc:postgresql://localhost:5432/lab_db`  |
++| `DB_USER`      | пользователь БД           | `postgres`                                 |
++| `DB_PASSWORD`  | пароль БД                 | см. `application.yaml`                     |
++| `JWT_SECRET`   | секрет подписи токенов    | см. `application.yaml`                     |
++
++> Перед публикацией или деплоем обязательно задайте свои `DB_PASSWORD` и `JWT_SECRET`.
++
++## API
+ 
+-| Name | Description |
+-|------|-------------|
+-| [Content Negotiation](https://start.ktor.io/p/io.ktor/server-content-negotiation) | Provides automatic content conversion according to Content-Type and Accept headers |
+-| [kotlinx.serialization](https://start.ktor.io/p/io.ktor/server-kotlinx-serialization) | Handles JSON serialization using kotlinx.serialization library |
++Токен, полученный в `/login`, передаётся в заголовке `Authorization: Bearer <token>`.
+ 
++| Метод и путь                       | Доступ         | Описание                                          |
++|------------------------------------|----------------|---------------------------------------------------|
++| `GET /`                            | все            | проверка, что сервер работает                     |
++| `POST /register`                   | все            | регистрация (`email`, `plainPassword`)            |
++| `POST /login`                      | все            | вход, возвращает `{"token": "..."}`               |
++| `GET /api/me`                      | авторизованные | профиль текущего пользователя                     |
++| `GET /api/users`                   | ADMIN          | список пользователей                              |
++| `POST /api/admin/delete-user/{id}` | ADMIN          | удалить пользователя (себя удалить нельзя)        |
++| `GET /api/equipment`               | авторизованные | список оборудования, `?available=true` — только доступное |
++| `GET /api/equipment/{id}`          | авторизованные | одна запись                                       |
++| `POST /api/equipment`              | ADMIN          | добавить оборудование                             |
++| `PUT /api/equipment/{id}`          | ADMIN          | изменить оборудование                             |
++| `DELETE /api/equipment/{id}`       | ADMIN          | удалить оборудование                              |
+ 
+-## Building & Running
+-To build or run the project, use one of the following tasks:
++Роль выдаёт сервер: **первый зарегистрированный пользователь становится `ADMIN`**, все остальные — `USER`.
++Поле `role` в запросе регистрации игнорируется.
++
++### Примеры
++
++```bash
++curl -X POST localhost:8080/register -H 'Content-Type: application/json' \
++  -d '{"email":"admin@lab.com","plainPassword":"Passw0rd!x"}'
++
++TOKEN=$(curl -s -X POST localhost:8080/login -H 'Content-Type: application/json' \
++  -d '{"email":"admin@lab.com","plainPassword":"Passw0rd!x"}' | sed 's/.*"token": *"\([^"]*\)".*/\1/')
++
++curl -X POST localhost:8080/api/equipment -H "Authorization: Bearer $TOKEN" \
++  -H 'Content-Type: application/json' \
++  -d '{"name":"Microscope","labName":"Lab 1","hourlyRate":100}'
++```
+ 
++Пароль: минимум 8 символов, с заглавной и строчной буквой, цифрой и спецсимволом.
++Ошибки возвращаются в виде `{"status": 400, "error": "...", "timestamp": ...}`.
+ 
+-| Task | Description |
+-|------|-------------|
+-| `./gradlew test`    | Run the tests     |
+-| `./gradlew build`   | Build the project |
+-| `./gradlew run`     | Run the server    |
++## Структура
+ 
+-If the server starts successfully, you'll see the following output:
+ ```
+-2024-12-04 14:32:45.584 [main] INFO  Application - Application started in 0.303 seconds.
+-2024-12-04 14:32:45.682 [main] INFO  Application - Responding at http://0.0.0.0:8080
++src/main/kotlin
++├── main.kt              точка входа, сборка зависимостей
++├── plagins/             настройка Ktor: JWT, JSON, обработка ошибок, роутинг
++├── routes/              HTTP-эндпоинты
++├── service/             бизнес-логика и валидация
++├── repository/          доступ к БД (Exposed)
++├── database/            таблицы и подключение
++├── models/              DTO и модели
++└── Exception/           прикладные исключения -> HTTP-коды
+ ```
+diff --git a/build.gradle.kts b/build.gradle.kts
+index 58042dd..8b0dc7d 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -32,7 +32,6 @@ dependencies {
+     // 🔄 Сериализация (JSON)
+     implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
+     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
+-    implementation("io.github.smiley4:ktor-swagger-ui-openapi3:1.7.0") // Проверь последнюю версию!
+ 
+     implementation("io.ktor:ktor-server-status-pages:${ktorVersion}")
+ 
+@@ -48,4 +47,9 @@ dependencies {
+ 
+     // 📝 Логирование
+     implementation("ch.qos.logback:logback-classic:1.5.6")
+-}
+\ No newline at end of file
++
++    // 🧪 Тесты (БД в памяти H2, чтобы не требовался запущенный PostgreSQL)
++    testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
++    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.0.0")
++    testImplementation("com.h2database:h2:2.2.224")
++}
+diff --git a/src/main/kotlin/Exception/AppException.kt b/src/main/kotlin/Exception/AppException.kt
+index 0d32bdd..1d651bd 100644
+--- a/src/main/kotlin/Exception/AppException.kt
++++ b/src/main/kotlin/Exception/AppException.kt
+@@ -9,6 +9,9 @@ class ForbiddenException(message: String = "Неподходящая роль п
+ // Пользователь не найден -> HTTP 404
+ class UserNotFoundException(message: String = "User not found") : AppException(message, statusCode = 404)
+ 
++// Любой другой ресурс не найден (например, оборудование) -> HTTP 404
++class ResourceNotFoundException(message: String = "Resource not found") : AppException(message, statusCode = 404)
++
+ // Дубликат email / Конфликт ресурсов -> HTTP 409
+ class DuplicateResourceException(message: String = "Resource already exists") : AppException(message, statusCode = 409)
+ // Внутренняя ошибка сервера (упала БД, нет сети) -> HTTP 500
+diff --git a/src/main/kotlin/database/EquipmentTable.kt b/src/main/kotlin/database/EquipmentTable.kt
+index f86bebc..17abd16 100644
+--- a/src/main/kotlin/database/EquipmentTable.kt
++++ b/src/main/kotlin/database/EquipmentTable.kt
+@@ -1,11 +1,16 @@
+ import org.jetbrains.exposed.sql.Table
+ 
+-object EquipmentTable: Table("EquipmentTable"){
++object EquipmentTable : Table("EquipmentTable") {
+     val id = integer("id").autoIncrement()
+-    val name = varchar("name",100)
+-    val labName = varchar("lab_name",50).uniqueIndex()
++    val name = varchar("name", 100)
++    val labName = varchar("lab_name", 50)
+     val hourlyRate = integer("hourly_rate")
+     val isAvailable = bool("isAvailable")
+ 
+     override val primaryKey = PrimaryKey(id)
+-}
+\ No newline at end of file
++
++    init {
++        // В одной лаборатории может быть много приборов, но название не должно повторяться
++        uniqueIndex(name, labName)
++    }
++}
+diff --git a/src/main/kotlin/database/database.kt b/src/main/kotlin/database/database.kt
+index d77a0f1..bd6399a 100644
+--- a/src/main/kotlin/database/database.kt
++++ b/src/main/kotlin/database/database.kt
+@@ -2,20 +2,22 @@ package com.example.database
+ 
+ import EquipmentTable
+ import UsersTable
++import io.ktor.server.application.Application
+ import org.jetbrains.exposed.sql.Database
+ import org.jetbrains.exposed.sql.SchemaUtils
+ import org.jetbrains.exposed.sql.transactions.transaction
+-import io.ktor.server.application.Application
+ 
+ fun Application.configureDatabases() {
++    val config = environment.config
++
+     Database.connect(
+-        url = "jdbc:postgresql://localhost:5432/lab_db",
+-        driver = "org.postgresql.Driver",
+-        user = "postgres",
+-        password = "54368"
++        url = config.property("db.url").getString(),
++        driver = config.propertyOrNull("db.driver")?.getString() ?: "org.postgresql.Driver",
++        user = config.property("db.user").getString(),
++        password = config.property("db.password").getString()
+     )
+ 
+     transaction {
+         SchemaUtils.create(UsersTable, EquipmentTable)
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/kotlin/main.kt b/src/main/kotlin/main.kt
+index b5123b1..d9c5ae3 100644
+--- a/src/main/kotlin/main.kt
++++ b/src/main/kotlin/main.kt
+@@ -1,52 +1,38 @@
+ package com.example
+ 
+-import com.example.Exception.AppException // Убедись, что пакет называется именно так (с большой буквы?)
+ import com.example.database.configureDatabases
+-import com.example.models.ErrorResponse
++import com.example.plagins.configureRouting
++import com.example.plagins.configureSecurity
++import com.example.plagins.configureSerialization
++import com.example.plagins.configureStatusPages
++import com.example.plagins.jwtSettings
++import com.example.repository.EquipmentRepositoryImpl
+ import com.example.repository.UserRepositoryImpl
+-import com.example.routes.configureAuthRoutes
+-import com.example.routes.userRoutes
+ import com.example.service.AuthService
++import com.example.service.EquipmentService
+ import com.example.service.JwtService
+ import com.example.service.UserService
+-import configureSerialization
+-import io.ktor.server.application.*
+-import io.ktor.server.plugins.statuspages.StatusPages // !!! ВАЖНО: Импорт плагина
+-import io.ktor.server.response.respond // !!! ВАЖНО: Для call.respond
+-import io.ktor.http.HttpStatusCode      // !!! ВАЖНО: Для кодов статуса
+-import io.ktor.server.routing.*
++import io.ktor.server.application.Application
+ 
+ fun main(args: Array<String>) {
+     io.ktor.server.netty.EngineMain.main(args)
+ }
+ 
+ fun Application.module() {
++    val jwt = jwtSettings()
++
+     configureDatabases()
+     configureSerialization()
+-    val jwtSecret = environment.config.property("jwt.secret").getString()
+-    val jwtIssuer = environment.config.property("jwt.issuer").getString() // Читаем из конфига
++    configureSecurity(jwt)
++    configureStatusPages()
+ 
+     val userRepository = UserRepositoryImpl()
++    val equipmentRepository = EquipmentRepositoryImpl()
++
+     val authService = AuthService(userRepository)
+     val userService = UserService(userRepository, authService)
+-    val jwtService = JwtService(jwtSecret, jwtIssuer)
+-
+-    install(StatusPages) {
+-        exception<AppException> { call, cause ->
+-            call.respond(
+-                HttpStatusCode.fromValue(cause.statusCode),
+-                ErrorResponse(status = cause.statusCode, error = cause.message ?: "")
+-            )
+-        }
+-        exception<Throwable> { call, cause ->
+-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Server Error"))
+-        }
+-    }
++    val equipmentService = EquipmentService(equipmentRepository)
++    val jwtService = JwtService(jwt.secret, jwt.issuer)
+ 
+-
+-    routing {
+-        configureAuthRoutes(authService, userService, jwtService)
+-
+-            userRoutes(userService)
+-    }
+-}
+\ No newline at end of file
++    configureRouting(userService, jwtService, equipmentService)
++}
+diff --git a/src/main/kotlin/models/LabEquipment.kt b/src/main/kotlin/models/LabEquipment.kt
+index 56c8679..3f9cd10 100644
+--- a/src/main/kotlin/models/LabEquipment.kt
++++ b/src/main/kotlin/models/LabEquipment.kt
+@@ -1,9 +1,22 @@
++package com.example.models
++
+ import kotlinx.serialization.Serializable
+ 
++/** Оборудование лаборатории (так оно возвращается клиенту). */
+ @Serializable
+ data class LabEquipment(
++    val id: Int,
+     val name: String,
+     val labName: String,
+     val hourlyRate: Int,
+     val isAvailable: Boolean
+-)
+\ No newline at end of file
++)
++
++/** Тело запроса для создания и обновления оборудования. */
++@Serializable
++data class EquipmentRequest(
++    val name: String,
++    val labName: String,
++    val hourlyRate: Int,
++    val isAvailable: Boolean = true
++)
+diff --git a/src/main/kotlin/models/User.kt b/src/main/kotlin/models/User.kt
+index 5e716c1..724c857 100644
+--- a/src/main/kotlin/models/User.kt
++++ b/src/main/kotlin/models/User.kt
+@@ -6,23 +6,31 @@ import kotlinx.serialization.Serializable
+ data class User(
+     val id: Int,
+     val email: String,
+-    val passwordHash:String,
+-    val role: String)
+-// DTO для регистрации и входа
++    val passwordHash: String,
++    val role: String
++)
++
++// DTO для регистрации и входа.
++// role необязательна и при регистрации игнорируется: роль назначает сервер.
+ @Serializable
+ data class AuthRequest(
+     val email: String,
+     val plainPassword: String,
+-    val role: String
++    val role: String = "USER"
+ )
++
+ @Serializable
+ data class UserResponse(
+     val id: Int,
+     val email: String,
+     val role: String
+ )
++
+ // DTO для ответа с токеном
+ @Serializable
+ data class AuthResponse(
+     val token: String
+ )
++
++/** Безопасное представление пользователя (без хеша пароля). */
++fun User.toResponse() = UserResponse(id = id, email = email, role = role)
+diff --git a/src/main/kotlin/plagins/Routing.kt b/src/main/kotlin/plagins/Routing.kt
+index e69de29..4ac42b3 100644
+--- a/src/main/kotlin/plagins/Routing.kt
++++ b/src/main/kotlin/plagins/Routing.kt
+@@ -0,0 +1,30 @@
++package com.example.plagins
++
++import com.example.routes.configureAuthRoutes
++import com.example.routes.equipmentRoutes
++import com.example.routes.userRoutes
++import com.example.service.EquipmentService
++import com.example.service.JwtService
++import com.example.service.UserService
++import io.ktor.server.application.Application
++import io.ktor.server.application.call
++import io.ktor.server.response.respondText
++import io.ktor.server.routing.get
++import io.ktor.server.routing.routing
++
++fun Application.configureRouting(
++    userService: UserService,
++    jwtService: JwtService,
++    equipmentService: EquipmentService
++) {
++    routing {
++        // Проверка, что сервер жив
++        get("/") {
++            call.respondText("LabTech Server is running")
++        }
++
++        configureAuthRoutes(userService, jwtService)
++        userRoutes(userService)
++        equipmentRoutes(userService, equipmentService)
++    }
++}
+diff --git a/src/main/kotlin/plagins/Security.kt b/src/main/kotlin/plagins/Security.kt
+index 6d4c7d7..990d165 100644
+--- a/src/main/kotlin/plagins/Security.kt
++++ b/src/main/kotlin/plagins/Security.kt
+@@ -1,3 +1,5 @@
++package com.example.plagins
++
+ import com.auth0.jwt.JWT
+ import com.auth0.jwt.algorithms.Algorithm
+ import io.ktor.server.application.Application
+@@ -6,28 +8,41 @@ import io.ktor.server.auth.Authentication
+ import io.ktor.server.auth.jwt.JWTPrincipal
+ import io.ktor.server.auth.jwt.jwt
+ 
+-fun Application.configureSecurity(){
+-    val jwtSecret = environment.config.property("jwt.secret").getString()
+-    val jwtIssuer = environment.config.property("jwt.issuer").getString()
++/** Имя схемы аутентификации. Используется в authenticate(...) во всех роутах. */
++const val JWT_AUTH = "auth-jwt"
++
++data class JwtSettings(
++    val secret: String,
++    val issuer: String,
++    val realm: String
++)
++
++/** Читает настройки JWT из application.yaml (секрет можно задать через JWT_SECRET). */
++fun Application.jwtSettings(): JwtSettings {
++    val config = environment.config
++    return JwtSettings(
++        secret = config.property("jwt.secret").getString(),
++        issuer = config.property("jwt.issuer").getString(),
++        realm = config.propertyOrNull("jwt.realm")?.getString() ?: "LabTech Server"
++    )
++}
+ 
+-    install(Authentication){
+-        jwt("auth-jwt"){ // Имя схемы
+-            realm = "LabTech Server"
++fun Application.configureSecurity(settings: JwtSettings) {
++    install(Authentication) {
++        jwt(JWT_AUTH) {
++            realm = settings.realm
+ 
+             verifier(
+-                JWT.require(Algorithm.HMAC256(jwtSecret))
+-                    .withIssuer(jwtIssuer) // Должно совпадать с тем, что ставишь в JwtService
++                JWT.require(Algorithm.HMAC256(settings.secret))
++                    .withIssuer(settings.issuer) // Должно совпадать с тем, что ставит JwtService
+                     .build()
+             )
+ 
+             validate { credential ->
+-                // Проверяем, что в токене есть Subject (это наш email)
+-                if (credential.payload.subject != null && credential.payload.subject.isNotEmpty()) {
+-                    JWTPrincipal(credential.payload)
+-                } else {
+-                    null
+-                }
++                // В токене должен быть subject (это email пользователя)
++                val subject = credential.payload.subject
++                if (!subject.isNullOrEmpty()) JWTPrincipal(credential.payload) else null
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/kotlin/plagins/Serialization.kt b/src/main/kotlin/plagins/Serialization.kt
+index 3c450eb..593268a 100644
+--- a/src/main/kotlin/plagins/Serialization.kt
++++ b/src/main/kotlin/plagins/Serialization.kt
+@@ -1,4 +1,5 @@
+-import io.ktor.http.ContentType.Application.Json
++package com.example.plagins
++
+ import io.ktor.serialization.kotlinx.json.json
+ import io.ktor.server.application.Application
+ import io.ktor.server.application.install
+@@ -12,7 +13,6 @@ fun Application.configureSerialization() {
+             isLenient = true
+             ignoreUnknownKeys = true
+             encodeDefaults = true // Важно! Чтобы поля по умолчанию попадали в JSON
+-
+         })
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/kotlin/plagins/StatusPages.kt b/src/main/kotlin/plagins/StatusPages.kt
+new file mode 100644
+index 0000000..0578daa
+--- /dev/null
++++ b/src/main/kotlin/plagins/StatusPages.kt
+@@ -0,0 +1,51 @@
++package com.example.plagins
++
++import com.example.Exception.AppException
++import com.example.models.ErrorResponse
++import io.ktor.http.HttpStatusCode
++import io.ktor.server.application.Application
++import io.ktor.server.application.install
++import io.ktor.server.application.log
++import io.ktor.server.plugins.BadRequestException
++import io.ktor.server.plugins.statuspages.StatusPages
++import io.ktor.server.response.respond
++import kotlinx.serialization.SerializationException
++
++fun Application.configureStatusPages() {
++    install(StatusPages) {
++        // Наши прикладные ошибки (400/401/403/404/409/500)
++        exception<AppException> { call, cause ->
++            if (cause.statusCode >= 500) {
++                call.application.log.error("Internal error", cause)
++            }
++            call.respond(
++                HttpStatusCode.fromValue(cause.statusCode),
++                ErrorResponse(status = cause.statusCode, error = cause.message ?: "")
++            )
++        }
++
++        // Некорректный JSON / не хватает обязательных полей в теле запроса
++        exception<BadRequestException> { call, _ ->
++            call.respond(
++                HttpStatusCode.BadRequest,
++                ErrorResponse(status = 400, error = "Invalid request body")
++            )
++        }
++
++        exception<SerializationException> { call, _ ->
++            call.respond(
++                HttpStatusCode.BadRequest,
++                ErrorResponse(status = 400, error = "Invalid request body")
++            )
++        }
++
++        // Всё остальное: логируем и отдаём общий ответ без подробностей
++        exception<Throwable> { call, cause ->
++            call.application.log.error("Unhandled exception", cause)
++            call.respond(
++                HttpStatusCode.InternalServerError,
++                ErrorResponse(status = 500, error = "Server Error")
++            )
++        }
++    }
++}
+diff --git a/src/main/kotlin/repository/EquipmentRepository.kt b/src/main/kotlin/repository/EquipmentRepository.kt
+index e69de29..80d1e12 100644
+--- a/src/main/kotlin/repository/EquipmentRepository.kt
++++ b/src/main/kotlin/repository/EquipmentRepository.kt
+@@ -0,0 +1,16 @@
++package com.example.repository
++
++import com.example.models.EquipmentRequest
++import com.example.models.LabEquipment
++
++interface EquipmentRepository {
++    suspend fun getAll(onlyAvailable: Boolean = false): List<LabEquipment>
++    suspend fun findById(equipmentId: Int): LabEquipment?
++    suspend fun create(request: EquipmentRequest): LabEquipment
++
++    /** Возвращает обновлённую запись или null, если такого оборудования нет. */
++    suspend fun update(equipmentId: Int, request: EquipmentRequest): LabEquipment?
++
++    /** true, если запись была удалена. */
++    suspend fun delete(equipmentId: Int): Boolean
++}
+diff --git a/src/main/kotlin/repository/EquipmentRepositoryImpl.kt b/src/main/kotlin/repository/EquipmentRepositoryImpl.kt
+new file mode 100644
+index 0000000..7e008c9
+--- /dev/null
++++ b/src/main/kotlin/repository/EquipmentRepositoryImpl.kt
+@@ -0,0 +1,94 @@
++package com.example.repository
++
++import EquipmentTable
++import com.example.Exception.AppException
++import com.example.Exception.DuplicateResourceException
++import com.example.Exception.InternalServerException
++import com.example.models.EquipmentRequest
++import com.example.models.LabEquipment
++import org.jetbrains.exposed.exceptions.ExposedSQLException
++import org.jetbrains.exposed.sql.ResultRow
++import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
++import org.jetbrains.exposed.sql.deleteWhere
++import org.jetbrains.exposed.sql.insert
++import org.jetbrains.exposed.sql.selectAll
++import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
++import org.jetbrains.exposed.sql.update
++
++class EquipmentRepositoryImpl : EquipmentRepository {
++    private suspend fun <T> dbQuery(block: suspend () -> T): T =
++        newSuspendedTransaction { block() }
++
++    private fun toEquipment(row: ResultRow): LabEquipment = LabEquipment(
++        id = row[EquipmentTable.id],
++        name = row[EquipmentTable.name],
++        labName = row[EquipmentTable.labName],
++        hourlyRate = row[EquipmentTable.hourlyRate],
++        isAvailable = row[EquipmentTable.isAvailable]
++    )
++
++    // 23505 — нарушение уникальности (одинаковые name + labName)
++    private fun mapSqlError(e: ExposedSQLException, request: EquipmentRequest): AppException =
++        if (e.sqlState == "23505") {
++            DuplicateResourceException("Equipment '${request.name}' already exists in lab '${request.labName}'")
++        } else {
++            InternalServerException("Database error while saving equipment", e)
++        }
++
++    override suspend fun getAll(onlyAvailable: Boolean): List<LabEquipment> = dbQuery {
++        val query = if (onlyAvailable) {
++            EquipmentTable.selectAll().where { EquipmentTable.isAvailable eq true }
++        } else {
++            EquipmentTable.selectAll()
++        }
++        query.orderBy(EquipmentTable.id).map(::toEquipment)
++    }
++
++    override suspend fun findById(equipmentId: Int): LabEquipment? = dbQuery {
++        EquipmentTable
++            .selectAll()
++            .where { EquipmentTable.id eq equipmentId }
++            .map(::toEquipment)
++            .singleOrNull()
++    }
++
++    override suspend fun create(request: EquipmentRequest): LabEquipment = dbQuery {
++        try {
++            val row = EquipmentTable.insert {
++                it[EquipmentTable.name] = request.name
++                it[EquipmentTable.labName] = request.labName
++                it[EquipmentTable.hourlyRate] = request.hourlyRate
++                it[EquipmentTable.isAvailable] = request.isAvailable
++            }.resultedValues!!.first()
++            toEquipment(row)
++        } catch (e: ExposedSQLException) {
++            throw mapSqlError(e, request)
++        }
++    }
++
++    override suspend fun update(equipmentId: Int, request: EquipmentRequest): LabEquipment? = dbQuery {
++        try {
++            val updatedRows = EquipmentTable.update({ EquipmentTable.id eq equipmentId }) {
++                it[EquipmentTable.name] = request.name
++                it[EquipmentTable.labName] = request.labName
++                it[EquipmentTable.hourlyRate] = request.hourlyRate
++                it[EquipmentTable.isAvailable] = request.isAvailable
++            }
++            if (updatedRows == 0) {
++                null
++            } else {
++                EquipmentTable
++                    .selectAll()
++                    .where { EquipmentTable.id eq equipmentId }
++                    .map(::toEquipment)
++                    .singleOrNull()
++            }
++        } catch (e: ExposedSQLException) {
++            throw mapSqlError(e, request)
++        }
++    }
++
++    override suspend fun delete(equipmentId: Int): Boolean = dbQuery {
++        EquipmentTable.deleteWhere { EquipmentTable.id eq equipmentId } > 0
++    }
++}
+diff --git a/src/main/kotlin/repository/UserRepository.kt b/src/main/kotlin/repository/UserRepository.kt
+index 5d1e4ab..12efa61 100644
+--- a/src/main/kotlin/repository/UserRepository.kt
++++ b/src/main/kotlin/repository/UserRepository.kt
+@@ -8,5 +8,5 @@ interface UserRepository {
+     suspend fun getHash(email: String): String?
+     suspend fun findById(id: Int): User?
+     suspend fun remove(id: Int)
+-
++    suspend fun hasUsers(): Boolean
+ }
+\ No newline at end of file
+diff --git a/src/main/kotlin/repository/UserRepositoryImpl.kt b/src/main/kotlin/repository/UserRepositoryImpl.kt
+index 8d99f11..51ddc06 100644
+--- a/src/main/kotlin/repository/UserRepositoryImpl.kt
++++ b/src/main/kotlin/repository/UserRepositoryImpl.kt
+@@ -24,7 +24,6 @@ class UserRepositoryImpl : UserRepository {
+         role = row[UsersTable.role]
+     )
+ 
+-
+     override suspend fun create(email: String, passwordHash: String, role: String): User = dbQuery {
+         try {
+             UsersTable.insert {
+@@ -34,7 +33,7 @@ class UserRepositoryImpl : UserRepository {
+             }.let { stmt ->
+                 toUser(stmt.resultedValues!!.first())
+             }
+-        } catch (e: ExposedSQLException) { // Или SQLException, зависит от драйвера
++        } catch (e: ExposedSQLException) {
+             if (e.sqlState == "23505") {
+                 throw DuplicateResourceException("Почта '$email' уже зарегистрирована")
+             }
+@@ -54,20 +53,12 @@ class UserRepositoryImpl : UserRepository {
+             .singleOrNull()?.passwordHash
+     }
+ 
+-
+     override suspend fun findByEmail(email: String): User? = dbQuery {
+-        try {
+-            UsersTable
+-                .selectAll()
+-                .where { UsersTable.email eq email }
+-                .map(::toUser)
+-                .singleOrNull()
+-        } catch (e: ExposedSQLException) { // Или SQLException, зависит от драйвера
+-            if (e.sqlState == "23505 ") {
+-                throw DuplicateResourceException("Почта '$email' уже зарегистрирована")
+-            }
+-            throw InternalServerException("Database error during creation", e)
+-        }
++        UsersTable
++            .selectAll()
++            .where { UsersTable.email eq email }
++            .map(::toUser)
++            .singleOrNull()
+     }
+ 
+     override suspend fun findById(id: Int): User? = dbQuery {
+@@ -78,14 +69,22 @@ class UserRepositoryImpl : UserRepository {
+             .singleOrNull()
+     }
+ 
++    // Удаление обязано выполняться внутри транзакции, иначе Exposed бросает исключение
+     override suspend fun remove(email: String) {
+-        UsersTable
+-            .deleteWhere { UsersTable.email eq email }
++        val targetEmail = email // локальная копия, чтобы не спутать с колонкой UsersTable.email
++        dbQuery {
++            UsersTable.deleteWhere { UsersTable.email eq targetEmail }
++        }
+     }
++
+     override suspend fun remove(id: Int) {
+-        UsersTable
+-            .deleteWhere { UsersTable.id eq id }
++        val targetId = id
++        dbQuery {
++            UsersTable.deleteWhere { UsersTable.id eq targetId }
++        }
+     }
+ 
+-    
++    override suspend fun hasUsers(): Boolean = dbQuery {
++        UsersTable.selectAll().count() > 0
++    }
+ }
+diff --git a/src/main/kotlin/routes/AuthRoutes.kt b/src/main/kotlin/routes/AuthRoutes.kt
+index 7a6209b..cbfaed0 100644
+--- a/src/main/kotlin/routes/AuthRoutes.kt
++++ b/src/main/kotlin/routes/AuthRoutes.kt
+@@ -1,51 +1,41 @@
+ package com.example.routes
+ 
+-import com.example.Exception.UnauthorizedException
+-import com.example.models.AuthRequest // DTO для регистрации
++import com.example.models.AuthRequest
++import com.example.models.AuthResponse
+ import com.example.models.SuccessResponse
+-import com.example.service.AuthService
++import com.example.models.toResponse
+ import com.example.service.JwtService
+ import com.example.service.UserService
+-import io.ktor.http.*
+-import io.ktor.server.application.*
+-import io.ktor.server.request.*
+-import io.ktor.server.response.*
+-import io.ktor.server.routing.*
++import io.ktor.http.HttpStatusCode
++import io.ktor.server.application.call
++import io.ktor.server.request.receive
++import io.ktor.server.response.respond
++import io.ktor.server.routing.Route
++import io.ktor.server.routing.post
+ 
+ fun Route.configureAuthRoutes(
+-    authService: AuthService,
+     userService: UserService,
+-    jwtService: JwtService // Передаем сервис токенов
++    jwtService: JwtService
+ ) {
+ 
+-    get("/users") {
+-        // TODO: Реализовать получение списка пользователей
+-    }
+-
+-
+     post("/register") {
+         val request = call.receive<AuthRequest>()
+-        // Создаем юзера через сервис (там уже есть валидация и хеширование)
+-        val user = userService.create(request.email, request.plainPassword, request.role)
+-
+-        call.respond(HttpStatusCode.Created, SuccessResponse(message = "Пользователь создан", data = user))
++        // Валидация, хеширование пароля и выбор роли делаются в сервисе
++        val user = userService.register(request.email, request.plainPassword)
++
++        // Возвращаем DTO без хеша пароля
++        call.respond(
++            HttpStatusCode.Created,
++            SuccessResponse(message = "User created", data = user.toResponse())
++        )
+     }
+ 
+     post("/login") {
+-        try {
+-            val request = call.receive<AuthRequest>() // DTO с email и password
+-
+-            // Вызываем НОВЫЙ метод сервиса
+-            val user = userService.login(request.email, request.plainPassword)
+-
+-            // Если дошли сюда — пароль верный. Генерируем токен.
+-            val token = jwtService.generateToken(user.email)
++        val request = call.receive<AuthRequest>()
+ 
+-            call.respond(mapOf("token" to token))
++        // Неверные данные -> UnauthorizedException, StatusPages вернёт 401
++        val user = userService.login(request.email, request.plainPassword)
+ 
+-        } catch (e: UnauthorizedException) {
+-            // StatusPages перехватит это и вернет 401
+-            throw e
+-        }
++        call.respond(AuthResponse(token = jwtService.generateToken(user.email)))
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/kotlin/routes/EquipmentRoutes.kt b/src/main/kotlin/routes/EquipmentRoutes.kt
+index e69de29..96f1d34 100644
+--- a/src/main/kotlin/routes/EquipmentRoutes.kt
++++ b/src/main/kotlin/routes/EquipmentRoutes.kt
+@@ -0,0 +1,67 @@
++package com.example.routes
++
++import com.example.Exception.ValidationException
++import com.example.models.EquipmentRequest
++import com.example.plagins.JWT_AUTH
++import com.example.service.EquipmentService
++import com.example.service.UserService
++import io.ktor.http.HttpStatusCode
++import io.ktor.server.application.call
++import io.ktor.server.auth.authenticate
++import io.ktor.server.request.receive
++import io.ktor.server.response.respond
++import io.ktor.server.routing.Route
++import io.ktor.server.routing.delete
++import io.ktor.server.routing.get
++import io.ktor.server.routing.post
++import io.ktor.server.routing.put
++import io.ktor.server.routing.route
++
++/**
++ * Оборудование лаборатории.
++ *  - читать список и отдельные записи может любой авторизованный пользователь;
++ *  - создавать, менять и удалять — только ADMIN.
++ */
++fun Route.equipmentRoutes(userService: UserService, equipmentService: EquipmentService) {
++
++    route("/api/equipment") {
++        authenticate(JWT_AUTH) {
++
++            // GET /api/equipment            — всё оборудование
++            // GET /api/equipment?available=true — только доступное
++            get {
++                val availableParam = call.request.queryParameters["available"]
++                val onlyAvailable = if (availableParam == null) {
++                    false
++                } else {
++                    availableParam.toBooleanStrictOrNull()
++                        ?: throw ValidationException("available must be true or false")
++                }
++                call.respond(equipmentService.getAll(onlyAvailable))
++            }
++
++            get("/{id}") {
++                call.respond(equipmentService.getById(call.pathId("id")))
++            }
++
++            post {
++                call.requireAdmin(userService)
++                val request = call.receive<EquipmentRequest>()
++                call.respond(HttpStatusCode.Created, equipmentService.create(request))
++            }
++
++            put("/{id}") {
++                call.requireAdmin(userService)
++                val id = call.pathId("id")
++                val request = call.receive<EquipmentRequest>()
++                call.respond(equipmentService.update(id, request))
++            }
++
++            delete("/{id}") {
++                call.requireAdmin(userService)
++                equipmentService.delete(call.pathId("id"))
++                call.respond(HttpStatusCode.NoContent)
++            }
++        }
++    }
++}
+diff --git a/src/main/kotlin/routes/RouteUtils.kt b/src/main/kotlin/routes/RouteUtils.kt
+new file mode 100644
+index 0000000..ec122ea
+--- /dev/null
++++ b/src/main/kotlin/routes/RouteUtils.kt
+@@ -0,0 +1,39 @@
++package com.example.routes
++
++import com.example.Exception.ForbiddenException
++import com.example.Exception.UnauthorizedException
++import com.example.Exception.UserNotFoundException
++import com.example.Exception.ValidationException
++import com.example.models.User
++import com.example.service.UserService
++import io.ktor.server.application.ApplicationCall
++import io.ktor.server.auth.jwt.JWTPrincipal
++import io.ktor.server.auth.principal
++
++/** Пользователь, которому принадлежит JWT-токен текущего запроса. */
++suspend fun ApplicationCall.currentUser(userService: UserService): User {
++    val principal = principal<JWTPrincipal>()
++        ?: throw UnauthorizedException("No authentication token provided")
++    val email = principal.payload.subject
++        ?: throw UnauthorizedException("Invalid token")
++
++    return try {
++        userService.findByEmail(email)
++    } catch (e: UserNotFoundException) {
++        // Токен ещё действует, но пользователя уже удалили
++        throw UnauthorizedException("User no longer exists")
++    }
++}
++
++/** То же, что currentUser, но дополнительно требует роль ADMIN. */
++suspend fun ApplicationCall.requireAdmin(userService: UserService): User {
++    val user = currentUser(userService)
++    if (!user.role.equals(UserService.ROLE_ADMIN, ignoreCase = true)) {
++        throw ForbiddenException("Access denied. Admin privileges required.")
++    }
++    return user
++}
++
++/** Числовой параметр из пути, например /{id}. */
++fun ApplicationCall.pathId(name: String = "id"): Int =
++    parameters[name]?.toIntOrNull() ?: throw ValidationException("Invalid $name format")
+diff --git a/src/main/kotlin/routes/UserRoutes.kt b/src/main/kotlin/routes/UserRoutes.kt
+index 984bec5..c55394f 100644
+--- a/src/main/kotlin/routes/UserRoutes.kt
++++ b/src/main/kotlin/routes/UserRoutes.kt
+@@ -1,71 +1,43 @@
+ package com.example.routes
+ 
+-import com.example.Exception.ForbiddenException // Убедись, что этот импорт есть
+-import com.example.Exception.UnauthorizedException
+-import com.example.Exception.ValidationException
+-import com.example.models.UserResponse
++import com.example.models.toResponse
++import com.example.plagins.JWT_AUTH
+ import com.example.service.UserService
+-import io.ktor.http.*
+-import io.ktor.server.application.*
+-import io.ktor.server.auth.*
+-import io.ktor.server.auth.jwt.*
+-import io.ktor.server.response.*
+-import io.ktor.server.routing.*
++import io.ktor.http.HttpStatusCode
++import io.ktor.server.application.call
++import io.ktor.server.auth.authenticate
++import io.ktor.server.response.respond
++import io.ktor.server.routing.Route
++import io.ktor.server.routing.get
++import io.ktor.server.routing.post
++import io.ktor.server.routing.route
+ 
+-// Передаем сервис в функцию
+ fun Route.userRoutes(userService: UserService) {
+ 
+     route("/api") {
+-        authenticate("jwt-auth") { // Схема должна называться точно так же, как в Security.kt
++        authenticate(JWT_AUTH) {
+ 
++            // Профиль текущего пользователя
+             get("/me") {
+-                // 1. Получаем данные из токена
+-                val principal = call.principal<JWTPrincipal>()
+-                    ?: throw ForbiddenException("No principal found in context") // Защита от null
+-
+-                val email = principal.payload.subject
+-
+-                val user = userService.findByEmail(email) // Предполагаю, что этот метод есть и возвращает User? или User
+-
++                val user = call.currentUser(userService)
++                call.respond(user.toResponse())
++            }
+ 
+-                if (user == null) {
+-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "User profile not found"))
+-                } else {
+-                    val responseDto = UserResponse(
+-                        id = user.id,
+-                        email = user.email,
+-                        role = user.role
+-                    )
+-                    call.respond(responseDto)
+-                }
++            // Список всех пользователей (только ADMIN)
++            get("/users") {
++                call.requireAdmin(userService)
++                call.respond(userService.getAll().map { it.toResponse() })
+             }
+ 
++            // Удаление пользователя (только ADMIN, себя удалить нельзя)
+             post("/admin/delete-user/{id}") {
+-                // 1. Получаем email текущего пользователя из токена
+-                val principal = call.principal<JWTPrincipal>()
+-                    ?: throw UnauthorizedException("No authentication token provided")
+-
+-                val adminEmail = principal.payload.subject
+-
+-                // 2. Находим этого пользователя в БД, чтобы узнать его актуальную роль
+-                val adminUser = userService.findByEmail(adminEmail)
+-
+-                // 3. Проверяем права доступа (RBAC)
+-                if (adminUser.role.uppercase() != "ADMIN") {
+-                    throw ForbiddenException("Access denied. Admin privileges required.")
+-                }
+-
+-                // 4. Парсим ID из пути URL
+-                val targetUserId = call.parameters["id"]?.toIntOrNull()
+-                    ?: throw ValidationException("Invalid user ID format")
++                val admin = call.requireAdmin(userService)
++                val targetUserId = call.pathId("id")
+ 
+-                // 5. Вызываем сервис удаления
+-                // Передаем email админа, чтобы сервис мог проверить запрет самоудаления
+-                userService.deleteUser(targetUserId, requesterEmail = adminEmail)
++                userService.deleteUser(targetUserId, requesterEmail = admin.email)
+ 
+-                // 6. Ответ об успехе
+                 call.respond(HttpStatusCode.OK, mapOf("message" to "User $targetUserId deleted successfully"))
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/kotlin/service/EquipmentService.kt b/src/main/kotlin/service/EquipmentService.kt
+new file mode 100644
+index 0000000..4e146d7
+--- /dev/null
++++ b/src/main/kotlin/service/EquipmentService.kt
+@@ -0,0 +1,49 @@
++package com.example.service
++
++import com.example.Exception.ResourceNotFoundException
++import com.example.Exception.ValidationException
++import com.example.models.EquipmentRequest
++import com.example.models.LabEquipment
++import com.example.repository.EquipmentRepository
++
++class EquipmentService(private val repo: EquipmentRepository) {
++
++    suspend fun getAll(onlyAvailable: Boolean = false): List<LabEquipment> =
++        repo.getAll(onlyAvailable)
++
++    suspend fun getById(id: Int): LabEquipment =
++        repo.findById(id) ?: throw notFound(id)
++
++    suspend fun create(request: EquipmentRequest): LabEquipment {
++        val clean = validated(request)
++        return repo.create(clean)
++    }
++
++    suspend fun update(id: Int, request: EquipmentRequest): LabEquipment {
++        val clean = validated(request)
++        return repo.update(id, clean) ?: throw notFound(id)
++    }
++
++    suspend fun delete(id: Int) {
++        if (!repo.delete(id)) throw notFound(id)
++    }
++
++    private fun notFound(id: Int) = ResourceNotFoundException("Equipment with ID $id not found")
++
++    /** Проверяет поля и возвращает копию с обрезанными пробелами. */
++    private fun validated(request: EquipmentRequest): EquipmentRequest {
++        val name = request.name.trim()
++        val labName = request.labName.trim()
++
++        if (name.isEmpty() || name.length > 100) {
++            throw ValidationException("name must be between 1 and 100 characters")
++        }
++        if (labName.isEmpty() || labName.length > 50) {
++            throw ValidationException("labName must be between 1 and 50 characters")
++        }
++        if (request.hourlyRate < 0) {
++            throw ValidationException("hourlyRate must not be negative")
++        }
++        return request.copy(name = name, labName = labName)
++    }
++}
+diff --git a/src/main/kotlin/service/JwtService.kt b/src/main/kotlin/service/JwtService.kt
+index cce8e7c..3531b62 100644
+--- a/src/main/kotlin/service/JwtService.kt
++++ b/src/main/kotlin/service/JwtService.kt
+@@ -21,7 +21,7 @@ class JwtService(private val secretKey: String, private val issuer: String) {
+         try {
+             val algorithm = Algorithm.HMAC256(secretKey)
+             val verifier = JWT.require(algorithm)
+-                .withIssuer("my-app")
++                .withIssuer(issuer)
+                 .build()
+ 
+             val decodedJWT = verifier.verify(token)
+diff --git a/src/main/kotlin/service/UserService.kt b/src/main/kotlin/service/UserService.kt
+index 9b09910..7eb0c2b 100644
+--- a/src/main/kotlin/service/UserService.kt
++++ b/src/main/kotlin/service/UserService.kt
+@@ -1,51 +1,62 @@
+ package com.example.service
+ 
+ import UserRepository
++import com.example.Exception.DuplicateResourceException
+ import com.example.Exception.ForbiddenException
+-import com.example.Exception.InternalServerException
+-import com.example.Exception.UnauthorizedException // Создай этот класс ошибки (401)
++import com.example.Exception.UnauthorizedException
+ import com.example.Exception.UserNotFoundException
+ import com.example.Exception.ValidationException
+ import com.example.models.User
+ 
+ class UserService(private val userRepo: UserRepository, private val authService: AuthService) {
+ 
++    companion object {
++        const val ROLE_USER = "USER"
++        const val ROLE_ADMIN = "ADMIN"
++    }
++
+     val emailRegex = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$")
+ 
+-    // Регулярка для пароля (оставил твою, она сложная, но рабочая)
++    // Пароль: минимум 8 символов, заглавная, строчная, цифра и спецсимвол
+     val passwordRegex = Regex(
+         "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).{8,}$"
+     )
++
+     /**
+      * Удаляет пользователя по ID.
+      * @param targetId ID пользователя, которого хотим удалить
+-     * @param requesterEmail Email того, кто запрашивает удаление (для защиты от самоудаления, если нужно)
++     * @param requesterEmail Email того, кто запрашивает удаление (запрет самоудаления)
+      */
+     suspend fun deleteUser(targetId: Int, requesterEmail: String? = null) {
+-        // 1. Проверяем, существует ли пользователь вообще
+         val userToDelete = userRepo.findById(targetId)
+             ?: throw UserNotFoundException("User with ID $targetId not found")
+ 
+-        // 2. Опциональная защита: запрет самоудаления (если передали email запросчика)
+         if (requesterEmail != null && userToDelete.email == requesterEmail) {
+             throw ForbiddenException("You cannot delete your own account via this endpoint")
+         }
+ 
+-        // 3. Выполняем удаление
+-        val success = userRepo.remove(targetId)
++        userRepo.remove(targetId)
++    }
+ 
++    /**
++     * Публичная регистрация. Роль выбирает сервер, а не клиент:
++     * самый первый пользователь системы становится ADMIN, все остальные — USER.
++     */
++    suspend fun register(email: String, plainPassword: String): User {
++        val role = if (userRepo.hasUsers()) ROLE_USER else ROLE_ADMIN
++        return create(email, plainPassword, role)
+     }
++
+     /**
+-     * Регистрация нового пользователя
++     * Создание пользователя с явной ролью (для внутреннего использования)
+      */
+     suspend fun create(email: String, plainPassword: String, role: String): User {
+         if (!isValidEmail(email)) throw ValidationException("Invalid email format")
+         if (!isValidPassword(plainPassword)) throw ValidationException("Weak password")
+ 
+         // Проверка уникальности ДО записи в БД (чтобы дать красивую ошибку)
+-        val existingUser = userRepo.findByEmail(email)
+-        if (existingUser != null) {
+-            throw com.example.Exception.DuplicateResourceException("Email already registered")
++        if (userRepo.findByEmail(email) != null) {
++            throw DuplicateResourceException("Email already registered")
+         }
+ 
+         val hashedPassword = authService.hashPassword(plainPassword)
+@@ -58,19 +69,14 @@ class UserService(private val userRepo: UserRepository, private val authService:
+      * Бросает UnauthorizedException, если нет.
+      */
+     suspend fun login(email: String, plainPassword: String): User {
+-        // 1. Ищем пользователя в базе
++        // Не пишем "user not found", чтобы не давать лишнюю информацию
+         val user = userRepo.findByEmail(email)
+-            ?: throw UnauthorizedException("Invalid credentials") // Не пишем "user not found", чтобы не давать инфу хакерам
+-
+-        // 2. Проверяем пароль через AuthService
+-        // Здесь происходит сравнение plainPassword с storedHash внутри BCrypt
+-        val isCorrect = authService.checkPassword(plainPassword, email)
++            ?: throw UnauthorizedException("Invalid credentials")
+ 
+-        if (!isCorrect) {
++        if (!authService.checkPassword(plainPassword, email)) {
+             throw UnauthorizedException("Invalid credentials")
+         }
+ 
+-        // 3. Всё ок, возвращаем пользователя (роутер потом сделает из него JWT токен)
+         return user
+     }
+ 
+@@ -78,13 +84,15 @@ class UserService(private val userRepo: UserRepository, private val authService:
+     fun isValidEmail(email: String): Boolean = email.matches(emailRegex)
+     fun isValidPassword(password: String): Boolean = password.matches(passwordRegex)
+ 
+-    // Метод получения профиля (для GET /users/me)
++    suspend fun getAll(): List<User> = userRepo.getAll()
++
+     suspend fun getUserById(id: Int): User {
+         return userRepo.findById(id)
+-            ?: throw com.example.Exception.UserNotFoundException("User not found")
++            ?: throw UserNotFoundException("User not found")
+     }
++
+     suspend fun findByEmail(email: String): User {
+         return userRepo.findByEmail(email)
+-            ?: throw com.example.Exception.UserNotFoundException("User not found")
++            ?: throw UserNotFoundException("User not found")
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/resources/application.yaml b/src/main/resources/application.yaml
+index 7fa086b..d455724 100644
+--- a/src/main/resources/application.yaml
++++ b/src/main/resources/application.yaml
+@@ -4,9 +4,18 @@ ktor:
+   application:
+     modules:
+       - com.example.MainKt.module
++
++# Подключение к БД. Значения можно переопределить переменными окружения
++# (синтаксис "$ИМЯ:значение_по_умолчанию"), чтобы не хранить секреты в репозитории.
++db:
++  url: "$DB_URL:jdbc:postgresql://localhost:5432/lab_db"
++  driver: "org.postgresql.Driver"
++  user: "$DB_USER:postgres"
++  password: "$DB_PASSWORD:54368"
++
+ # Настройки JWT
+ jwt:
+-  secret: "my-super-secret-key-12345" # Секретная строка для подписи токенов
+-  issuer: "[http://0.0.0.0:8080/](http://0.0.0.0:8080/)"
+-  audience: "[http://0.0.0.0:8080/users](http://0.0.0.0:8080/users)"
+-  realm: "LabTech Server"
+\ No newline at end of file
++  secret: "$JWT_SECRET:my-super-secret-key-12345" # Секретная строка для подписи токенов
++  issuer: "http://0.0.0.0:8080/"
++  audience: "http://0.0.0.0:8080/users"
++  realm: "LabTech Server"
+diff --git a/src/test/kotlin/ServerTest.kt b/src/test/kotlin/ServerTest.kt
+index 80ccf0b..516c428 100644
+--- a/src/test/kotlin/ServerTest.kt
++++ b/src/test/kotlin/ServerTest.kt
+@@ -1,18 +1,248 @@
+ package com.example
+ 
+ import io.ktor.client.request.get
++import io.ktor.client.request.header
++import io.ktor.client.request.post
++import io.ktor.client.request.put
++import io.ktor.client.request.delete
++import io.ktor.client.request.setBody
++import io.ktor.client.statement.HttpResponse
++import io.ktor.client.statement.bodyAsText
++import io.ktor.http.ContentType
++import io.ktor.http.HttpHeaders
+ import io.ktor.http.HttpStatusCode
++import io.ktor.http.contentType
++import io.ktor.server.config.MapApplicationConfig
++import io.ktor.server.testing.ApplicationTestBuilder
+ import io.ktor.server.testing.testApplication
+-import kotlin.test.*
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.int
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
++import java.util.UUID
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++import kotlin.test.assertTrue
+ 
+ class ServerTest {
+ 
++    private val password = "Passw0rd!x"
++
++    /** Поднимает приложение с чистой БД H2 в памяти (у каждого теста своя). */
++    private fun withApp(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
++        environment {
++            config = MapApplicationConfig(
++                "db.url" to "jdbc:h2:mem:${UUID.randomUUID()};DB_CLOSE_DELAY=-1",
++                "db.driver" to "org.h2.Driver",
++                "db.user" to "sa",
++                "db.password" to "",
++                "jwt.secret" to "test-secret",
++                "jwt.issuer" to "test-issuer",
++                "jwt.audience" to "test-audience",
++                "jwt.realm" to "test"
++            )
++        }
++        application { module() }
++        block()
++    }
++
++    private suspend fun ApplicationTestBuilder.register(email: String, pass: String = password): HttpResponse =
++        client.post("/register") {
++            contentType(ContentType.Application.Json)
++            setBody("""{"email":"$email","plainPassword":"$pass"}""")
++        }
++
++    private suspend fun ApplicationTestBuilder.login(email: String, pass: String = password): HttpResponse =
++        client.post("/login") {
++            contentType(ContentType.Application.Json)
++            setBody("""{"email":"$email","plainPassword":"$pass"}""")
++        }
++
++    /** Регистрирует пользователя, логинится и возвращает токен. */
++    private suspend fun ApplicationTestBuilder.registerAndLogin(email: String): String {
++        assertEquals(HttpStatusCode.Created, register(email).status)
++        val response = login(email)
++        assertEquals(HttpStatusCode.OK, response.status)
++        return Json.parseToJsonElement(response.bodyAsText())
++            .jsonObject.getValue("token").jsonPrimitive.content
++    }
++
++    private fun json(text: String) = Json.parseToJsonElement(text).jsonObject
++
++    private suspend fun ApplicationTestBuilder.postEquipment(
++        token: String,
++        name: String = "Microscope",
++        labName: String = "Lab 1",
++        hourlyRate: Int = 100
++    ): HttpResponse = client.post("/api/equipment") {
++        header(HttpHeaders.Authorization, "Bearer $token")
++        contentType(ContentType.Application.Json)
++        setBody("""{"name":"$name","labName":"$labName","hourlyRate":$hourlyRate}""")
++    }
++
+     @Test
+-    fun `test root endpoint`() = testApplication {
+-        // loads default configuration
+-        configure()
+-        // verify server root returns 200
++    fun `root endpoint responds`() = withApp {
+         assertEquals(HttpStatusCode.OK, client.get("/").status)
+     }
+ 
++    @Test
++    fun `first user becomes admin and the next ones are regular users`() = withApp {
++        val adminToken = registerAndLogin("admin@lab.com")
++        val userToken = registerAndLogin("user@lab.com")
++
++        val admin = client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer $adminToken") }
++        val user = client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer $userToken") }
++
++        assertEquals("ADMIN", json(admin.bodyAsText()).getValue("role").jsonPrimitive.content)
++        assertEquals("USER", json(user.bodyAsText()).getValue("role").jsonPrimitive.content)
++    }
++
++    @Test
++    fun `registration cannot be used to grab the admin role and does not leak the hash`() = withApp {
++        register("first@lab.com") // первый пользователь — ADMIN
++
++        val response = client.post("/register") {
++            contentType(ContentType.Application.Json)
++            setBody("""{"email":"hacker@lab.com","plainPassword":"$password","role":"ADMIN"}""")
++        }
++        val body = response.bodyAsText()
++
++        assertEquals(HttpStatusCode.Created, response.status)
++        assertFalse(body.contains("passwordHash"), "hash must not be returned: $body")
++        assertTrue(body.contains("USER"), "role must be forced to USER: $body")
++    }
++
++    @Test
++    fun `register and login validate their input`() = withApp {
++        assertEquals(HttpStatusCode.Created, register("a@lab.com").status)
++        assertEquals(HttpStatusCode.Conflict, register("a@lab.com").status)
++        assertEquals(HttpStatusCode.BadRequest, register("b@lab.com", "weak").status)
++        assertEquals(HttpStatusCode.BadRequest, register("not-an-email").status)
++        assertEquals(HttpStatusCode.Unauthorized, login("a@lab.com", "Wrong0Pass!").status)
++        assertEquals(HttpStatusCode.Unauthorized, login("nobody@lab.com").status)
++
++        val broken = client.post("/login") {
++            contentType(ContentType.Application.Json)
++            setBody("{ this is not json")
++        }
++        assertEquals(HttpStatusCode.BadRequest, broken.status)
++    }
++
++    @Test
++    fun `protected routes require a token`() = withApp {
++        assertEquals(HttpStatusCode.Unauthorized, client.get("/api/me").status)
++        assertEquals(HttpStatusCode.Unauthorized, client.get("/api/equipment").status)
++        assertEquals(
++            HttpStatusCode.Unauthorized,
++            client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer garbage") }.status
++        )
++    }
++
++    @Test
++    fun `equipment crud works for admin and is read only for users`() = withApp {
++        val adminToken = registerAndLogin("admin@lab.com")
++        val userToken = registerAndLogin("user@lab.com")
++
++        // создание
++        val created = postEquipment(adminToken)
++        assertEquals(HttpStatusCode.Created, created.status)
++        val id = json(created.bodyAsText()).getValue("id").jsonPrimitive.int
++
++        // обычный пользователь не может изменять, но может читать
++        assertEquals(HttpStatusCode.Forbidden, postEquipment(userToken, name = "Centrifuge").status)
++        val list = client.get("/api/equipment") { header(HttpHeaders.Authorization, "Bearer $userToken") }
++        assertEquals(HttpStatusCode.OK, list.status)
++        assertTrue(list.bodyAsText().contains("Microscope"))
++        assertEquals(
++            HttpStatusCode.OK,
++            client.get("/api/equipment/$id") { header(HttpHeaders.Authorization, "Bearer $userToken") }.status
++        )
++        assertEquals(
++            HttpStatusCode.Forbidden,
++            client.delete("/api/equipment/$id") { header(HttpHeaders.Authorization, "Bearer $userToken") }.status
++        )
++
++        // обновление
++        val updated = client.put("/api/equipment/$id") {
++            header(HttpHeaders.Authorization, "Bearer $adminToken")
++            contentType(ContentType.Application.Json)
++            setBody("""{"name":"Microscope","labName":"Lab 1","hourlyRate":250,"isAvailable":false}""")
++        }
++        assertEquals(HttpStatusCode.OK, updated.status)
++        assertEquals(250, json(updated.bodyAsText()).getValue("hourlyRate").jsonPrimitive.int)
++
++        // фильтр по доступности: оборудование теперь недоступно
++        val available = client.get("/api/equipment?available=true") {
++            header(HttpHeaders.Authorization, "Bearer $userToken")
++        }
++        assertFalse(available.bodyAsText().contains("Microscope"))
++
++        // удаление
++        assertEquals(
++            HttpStatusCode.NoContent,
++            client.delete("/api/equipment/$id") { header(HttpHeaders.Authorization, "Bearer $adminToken") }.status
++        )
++        assertEquals(
++            HttpStatusCode.NotFound,
++            client.get("/api/equipment/$id") { header(HttpHeaders.Authorization, "Bearer $adminToken") }.status
++        )
++    }
++
++    @Test
++    fun `equipment input is validated`() = withApp {
++        val adminToken = registerAndLogin("admin@lab.com")
++
++        assertEquals(HttpStatusCode.Created, postEquipment(adminToken).status)
++        // тот же прибор в той же лаборатории
++        assertEquals(HttpStatusCode.Conflict, postEquipment(adminToken).status)
++        // тот же прибор в другой лаборатории — можно
++        assertEquals(HttpStatusCode.Created, postEquipment(adminToken, labName = "Lab 2").status)
++        // отрицательная цена и пустое имя
++        assertEquals(HttpStatusCode.BadRequest, postEquipment(adminToken, name = "Pump", hourlyRate = -5).status)
++        assertEquals(HttpStatusCode.BadRequest, postEquipment(adminToken, name = "   ").status)
++    }
++
++    @Test
++    fun `only admin can list and delete users and cannot delete self`() = withApp {
++        val adminToken = registerAndLogin("admin@lab.com")
++        val userToken = registerAndLogin("user@lab.com")
++
++        assertEquals(
++            HttpStatusCode.Forbidden,
++            client.get("/api/users") { header(HttpHeaders.Authorization, "Bearer $userToken") }.status
++        )
++        val users = client.get("/api/users") { header(HttpHeaders.Authorization, "Bearer $adminToken") }
++        assertEquals(HttpStatusCode.OK, users.status)
++        assertFalse(users.bodyAsText().contains("passwordHash"))
++
++        val me = client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer $adminToken") }
++        val adminId = json(me.bodyAsText()).getValue("id").jsonPrimitive.int
++        val other = client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer $userToken") }
++        val userId = json(other.bodyAsText()).getValue("id").jsonPrimitive.int
++
++        assertEquals(
++            HttpStatusCode.Forbidden,
++            client.post("/api/admin/delete-user/$userId") {
++                header(HttpHeaders.Authorization, "Bearer $userToken")
++            }.status
++        )
++        assertEquals(
++            HttpStatusCode.Forbidden,
++            client.post("/api/admin/delete-user/$adminId") {
++                header(HttpHeaders.Authorization, "Bearer $adminToken")
++            }.status
++        )
++        assertEquals(
++            HttpStatusCode.OK,
++            client.post("/api/admin/delete-user/$userId") {
++                header(HttpHeaders.Authorization, "Bearer $adminToken")
++            }.status
++        )
++        // токен удалённого пользователя больше не работает
++        assertEquals(
++            HttpStatusCode.Unauthorized,
++            client.get("/api/me") { header(HttpHeaders.Authorization, "Bearer $userToken") }.status
++        )
++    }
+ }

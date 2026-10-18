@@ -2,17 +2,19 @@ package com.example.database
 
 import EquipmentTable
 import UsersTable
+import io.ktor.server.application.Application
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
-import io.ktor.server.application.Application
 
 fun Application.configureDatabases() {
+    val config = environment.config
+
     Database.connect(
-        url = "jdbc:postgresql://localhost:5432/lab_db",
-        driver = "org.postgresql.Driver",
-        user = "postgres",
-        password = "54368"
+        url = config.property("db.url").getString(),
+        driver = config.propertyOrNull("db.driver")?.getString() ?: "org.postgresql.Driver",
+        user = config.property("db.user").getString(),
+        password = config.property("db.password").getString()
     )
 
     transaction {

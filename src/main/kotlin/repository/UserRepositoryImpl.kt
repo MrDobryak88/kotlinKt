@@ -24,7 +24,6 @@ class UserRepositoryImpl : UserRepository {
         role = row[UsersTable.role]
     )
 
-
     override suspend fun create(email: String, passwordHash: String, role: String): User = dbQuery {
         try {
             UsersTable.insert {
@@ -34,7 +33,7 @@ class UserRepositoryImpl : UserRepository {
             }.let { stmt ->
                 toUser(stmt.resultedValues!!.first())
             }
-        } catch (e: ExposedSQLException) { // Или SQLException, зависит от драйвера
+        } catch (e: ExposedSQLException) {
             if (e.sqlState == "23505") {
                 throw DuplicateResourceException("Почта '$email' уже зарегистрирована")
             }
@@ -54,20 +53,12 @@ class UserRepositoryImpl : UserRepository {
             .singleOrNull()?.passwordHash
     }
 
-
     override suspend fun findByEmail(email: String): User? = dbQuery {
-        try {
-            UsersTable
-                .selectAll()
-                .where { UsersTable.email eq email }
-                .map(::toUser)
-                .singleOrNull()
-        } catch (e: ExposedSQLException) { // Или SQLException, зависит от драйвера
-            if (e.sqlState == "23505 ") {
-                throw DuplicateResourceException("Почта '$email' уже зарегистрирована")
-            }
-            throw InternalServerException("Database error during creation", e)
-        }
+        UsersTable
+            .selectAll()
+            .where { UsersTable.email eq email }
+            .map(::toUser)
+            .singleOrNull()
     }
 
     override suspend fun findById(id: Int): User? = dbQuery {
@@ -78,14 +69,22 @@ class UserRepositoryImpl : UserRepository {
             .singleOrNull()
     }
 
+    // Удаление обязано выполняться внутри транзакции, иначе Exposed бросает исключение
     override suspend fun remove(email: String) {
-        UsersTable
-            .deleteWhere { UsersTable.email eq email }
-    }
-    override suspend fun remove(id: Int) {
-        UsersTable
-            .deleteWhere { UsersTable.id eq id }
+        val targetEmail = email // локальная копия, чтобы не спутать с колонкой UsersTable.email
+        dbQuery {
+            UsersTable.deleteWhere { UsersTable.email eq targetEmail }
+        }
     }
 
-    
+    override suspend fun remove(id: Int) {
+        val targetId = id
+        dbQuery {
+            UsersTable.deleteWhere { UsersTable.id eq targetId }
+        }
+    }
+
+    override suspend fun hasUsers(): Boolean = dbQuery {
+        UsersTable.selectAll().count() > 0
+    }
 }

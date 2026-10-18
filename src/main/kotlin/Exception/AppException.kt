@@ -9,6 +9,9 @@ class ForbiddenException(message: String = "Неподходящая роль п
 // Пользователь не найден -> HTTP 404
 class UserNotFoundException(message: String = "User not found") : AppException(message, statusCode = 404)
 
+// Любой другой ресурс не найден (например, оборудование) -> HTTP 404
+class ResourceNotFoundException(message: String = "Resource not found") : AppException(message, statusCode = 404)
+
 // Дубликат email / Конфликт ресурсов -> HTTP 409
 class DuplicateResourceException(message: String = "Resource already exists") : AppException(message, statusCode = 409)
 // Внутренняя ошибка сервера (упала БД, нет сети) -> HTTP 500

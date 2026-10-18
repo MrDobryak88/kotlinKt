@@ -1,4 +1,5 @@
-import io.ktor.http.ContentType.Application.Json
+package com.example.plagins
+
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -12,7 +13,6 @@ fun Application.configureSerialization() {
             isLenient = true
             ignoreUnknownKeys = true
             encodeDefaults = true // Важно! Чтобы поля по умолчанию попадали в JSON
-
         })
     }
 }

@@ -21,7 +21,7 @@ class JwtService(private val secretKey: String, private val issuer: String) {
         try {
             val algorithm = Algorithm.HMAC256(secretKey)
             val verifier = JWT.require(algorithm)
-                .withIssuer("my-app")
+                .withIssuer(issuer)
                 .build()
 
             val decodedJWT = verifier.verify(token)

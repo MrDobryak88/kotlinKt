@@ -1,0 +1,51 @@
+openapi: 3.0.0
+info:
+  title: LabTech API
+  version: v1.0
+  description: API для управления лабораторным оборудованием и пользователями
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/register:
+    post:
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                plainPassword: { type: string }
+                role: { type: string }
+      responses:
+        '201':
+          description: Пользователь создан
+        '400':
+          description: Ошибка валидации
+  /api/v1/login:
+    post:
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string } # Обрати внимание: поле password, а не plainPassword
+      responses:
+        '200':
+          description: Токен выдан
+        '401':
+          description: Неверные данные
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []

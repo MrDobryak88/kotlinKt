@@ -32,7 +32,6 @@ dependencies {
     // 🔄 Сериализация (JSON)
     implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
-    implementation("io.github.smiley4:ktor-swagger-ui-openapi3:1.7.0") // Проверь последнюю версию!
 
     implementation("io.ktor:ktor-server-status-pages:${ktorVersion}")
 
@@ -48,4 +47,9 @@ dependencies {
 
     // 📝 Логирование
     implementation("ch.qos.logback:logback-classic:1.5.6")
+
+    // 🧪 Тесты (БД в памяти H2, чтобы не требовался запущенный PostgreSQL)
+    testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.0.0")
+    testImplementation("com.h2database:h2:2.2.224")
 }
