@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LabTech: проверка API</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e1e4ea;
+          --accent:#2b6cb0; --ok:#1f8a4c; --bad:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; background:var(--card); border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  #who { color:var(--muted); font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:20px; display:grid; gap:16px;
+         grid-template-columns: 1fr 1fr; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size:15px; margin:0 0 12px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
+  input[type=text], input[type=email], input[type=password], input[type=number] {
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:7px; font:inherit; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .check { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px; }
+  button { padding:8px 14px; border:1px solid var(--accent); background:var(--accent); color:#fff;
+           border-radius:7px; font:inherit; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button.danger { background:var(--bad); border-color:var(--bad); }
+  button:hover { filter:brightness(.95); }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  tbody tr { cursor:pointer; } tbody tr:hover { background:#f0f4fa; }
+  .muted { color:var(--muted); }
+  .tag { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; background:#eef2f7; }
+  #checks { list-style:none; padding:0; margin:12px 0 0; }
+  #checks li { padding:4px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .pass { color:var(--ok); } .fail { color:var(--bad); }
+  #log { max-height:320px; overflow:auto; font:12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+  .entry { border-bottom:1px solid var(--line); padding:8px 0; }
+  .entry b.s2 { color:var(--ok); } .entry b.s4, .entry b.s5 { color:var(--bad); }
+  pre { margin:4px 0 0; white-space:pre-wrap; word-break:break-word; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LabTech: проверка API</h1>
+  <span id="who" class="muted">не авторизован</span>
+</header>
+
+<main>
+  <section class="wide">
+    <h2>Автопроверка</h2>
+    <div class="muted">Создаст случайного пользователя и пройдёт по основным сценариям (вход, права, оборудование).
+      Текущий вход будет заменён на тестового пользователя.</div>
+    <div class="row"><button id="runChecks">Запустить автопроверку</button></div>
+    <ul id="checks"></ul>
+  </section>
+
+  <section>
+    <h2>Вход и регистрация</h2>
+    <label for="email">Email</label>
+    <input id="email" type="email" value="admin@lab.com">
+    <label for="password">Пароль (8+ символов, A-Z, a-z, цифра, спецсимвол)</label>
+    <input id="password" type="password" value="Passw0rd!x">
+    <div class="row">
+      <button id="btnRegister">Регистрация</button>
+      <button id="btnLogin" class="secondary">Войти</button>
+      <button id="btnLogout" class="secondary">Выйти</button>
+    </div>
+    <div class="row">
+      <button id="btnMe" class="secondary">Мой профиль (/api/me)</button>
+      <button id="btnUsers" class="secondary">Все пользователи (ADMIN)</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Первый зарегистрированный пользователь становится ADMIN.</div>
+  </section>
+
+  <section>
+    <h2>Оборудование</h2>
+    <label for="eqId">ID (для изменения и удаления)</label>
+    <input id="eqId" type="number" placeholder="выберите строку в таблице">
+    <label for="eqName">Название</label>
+    <input id="eqName" type="text" value="Микроскоп">
+    <label for="eqLab">Лаборатория</label>
+    <input id="eqLab" type="text" value="Лаб 1">
+    <label for="eqRate">Цена за час</label>
+    <input id="eqRate" type="number" value="100" min="0">
+    <label class="check"><input id="eqAvail" type="checkbox" checked> Доступно</label>
+    <div class="row">
+      <button id="btnCreate">Создать</button>
+      <button id="btnUpdate" class="secondary">Изменить</button>
+      <button id="btnDelete" class="danger">Удалить</button>
+    </div>
+    <div class="row">
+      <button id="btnList" class="secondary">Показать всё</button>
+      <button id="btnListAvail" class="secondary">Только доступное</button>
+    </div>
+  </section>
+
+  <section class="wide">
+    <h2>Таблица</h2>
+    <div class="muted" id="tableHint">Нажмите «Показать всё» или «Все пользователи». Клик по строке оборудования подставит её в форму.</div>
+    <table id="table" hidden><thead></thead><tbody></tbody></table>
+  </section>
+
+  <section class="wide">
+    <h2>Журнал запросов</h2>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let token = sessionStorage.getItem('token') || '';
+let role = sessionStorage.getItem('role') || '';
+
+function setSession(t, r, email) {
+  token = t || ''; role = r || '';
+  sessionStorage.setItem('token', token);
+  sessionStorage.setItem('role', role);
+  $('who').textContent = token ? ('вход выполнен' + (email ? ': ' + email : '') + (role ? ' (' + role + ')' : '')) : 'не авторизован';
+}
+
+function log(method, path, body, status, data) {
+  const div = document.createElement('div');
+  div.className = 'entry';
+  const head = document.createElement('div');
+  const st = document.createElement('b');
+  st.className = 's' + String(status)[0];
+  st.textContent = status;
+  head.append(st, ' ' + method + ' ' + path);
+  const pre = document.createElement('pre');
+  const out = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  pre.textContent = (body !== undefined ? 'запрос: ' + JSON.stringify(body) + '\n' : '') + 'ответ: ' + (out || '(пусто)');
+  div.append(head, pre);
+  $('log').prepend(div);
+}
+
+async function api(method, path, body, opts = {}) {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (token && !opts.noAuth) headers['Authorization'] = 'Bearer ' + token;
+  let res;
+  try {
+    res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    log(method, path, body, 0, 'Сеть недоступна: ' + e.message);
+    return { ok: false, status: 0, data: null };
+  }
+  const text = await res.text();
+  let data = text;
+  try { data = JSON.parse(text); } catch (_) {}
+  log(method, path, body, res.status, data);
+  return { ok: res.ok, status: res.status, data };
+}
+
+function credentials() { return { email: $('email').value.trim(), plainPassword: $('password').value }; }
+
+function equipmentBody() {
+  return { name: $('eqName').value, labName: $('eqLab').value,
+           hourlyRate: Number($('eqRate').value), isAvailable: $('eqAvail').checked };
+}
+
+function renderTable(columns, rows, onClick) {
+  const table = $('table');
+  table.hidden = false;
+  $('tableHint').hidden = rows.length > 0;
+  $('tableHint').textContent = rows.length ? '' : 'Пусто.';
+  table.tHead.innerHTML = '';
+  const hr = table.tHead.insertRow();
+  columns.forEach(c => { const th = document.createElement('th'); th.textContent = c.title; hr.append(th); });
+  table.tBodies[0].innerHTML = '';
+  rows.forEach(r => {
+    const tr = table.tBodies[0].insertRow();
+    columns.forEach(c => { tr.insertCell().textContent = c.get(r); });
+    if (onClick) tr.onclick = () => onClick(r);
+  });
+}
+
+function showEquipment(list) {
+  renderTable(
+    [{ title: 'ID', get: r => r.id }, { title: 'Название', get: r => r.name },
+     { title: 'Лаборатория', get: r => r.labName }, { title: 'Цена/час', get: r => r.hourlyRate },
+     { title: 'Доступно', get: r => r.isAvailable ? 'да' : 'нет' }],
+    list,
+    r => { $('eqId').value = r.id; $('eqName').value = r.name; $('eqLab').value = r.labName;
+           $('eqRate').value = r.hourlyRate; $('eqAvail').checked = r.isAvailable; });
+}
+
+async function login(email, password) {
+  const r = await api('POST', '/login', { email, plainPassword: password }, { noAuth: true });
+  if (r.ok && r.data && r.data.token) {
+    setSession(r.data.token, '', email);
+    const me = await api('GET', '/api/me');
+    if (me.ok) setSession(token, me.data.role, me.data.email);
+  }
+  return r;
+}
+
+$('btnRegister').onclick = () => api('POST', '/register', credentials(), { noAuth: true });
+$('btnLogin').onclick = () => login($('email').value.trim(), $('password').value);
+$('btnLogout').onclick = () => setSession('', '');
+$('btnMe').onclick = () => api('GET', '/api/me');
+$('btnUsers').onclick = async () => {
+  const r = await api('GET', '/api/users');
+  if (r.ok) renderTable(
+    [{ title: 'ID', get: u => u.id }, { title: 'Email', get: u => u.email }, { title: 'Роль', get: u => u.role }],
+    r.data, u => { $('eqId').value = ''; });
+};
+$('btnCreate').onclick = async () => {
+  const r = await api('POST', '/api/equipment', equipmentBody());
+  if (r.ok) { $('eqId').value = r.data.id; }
+};
+$('btnUpdate').onclick = () => api('PUT', '/api/equipment/' + $('eqId').value, equipmentBody());
+$('btnDelete').onclick = async () => {
+  const r = await api('DELETE', '/api/equipment/' + $('eqId').value);
+  if (r.ok) $('eqId').value = '';
+};
+async function loadList(onlyAvailable) {
+  const r = await api('GET', '/api/equipment' + (onlyAvailable ? '?available=true' : ''));
+  if (r.ok) showEquipment(r.data);
+}
+$('btnList').onclick = () => loadList(false);
+$('btnListAvail').onclick = () => loadList(true);
+
+// ---------- Автопроверка ----------
+$('runChecks').onclick = async () => {
+  const ul = $('checks');
+  ul.innerHTML = '';
+  const add = (title, ok, details) => {
+    const li = document.createElement('li');
+    li.className = ok ? 'pass' : 'fail';
+    li.textContent = (ok ? '✔ ' : '✘ ') + title + (details ? ' — ' + details : '');
+    ul.append(li);
+  };
+  const expect = (title, r, status) =>
+    add(title, r.status === status, 'ожидали ' + status + ', получили ' + r.status);
+
+  setSession('', '');
+  const email = 'test' + Date.now() + '@lab.com';
+  const pass = 'Passw0rd!x';
+
+  expect('Сервер отвечает на /', await api('GET', '/', undefined, { noAuth: true }), 200);
+  expect('/api/me без токена закрыт', await api('GET', '/api/me', undefined, { noAuth: true }), 401);
+  expect('Регистрация', await api('POST', '/register', { email, plainPassword: pass }, { noAuth: true }), 201);
+  expect('Повторная регистрация отклонена', await api('POST', '/register', { email, plainPassword: pass }, { noAuth: true }), 409);
+  expect('Слабый пароль отклонён', await api('POST', '/register', { email: 'w' + email, plainPassword: 'weak' }, { noAuth: true }), 400);
+  expect('Неверный пароль отклонён', await api('POST', '/login', { email, plainPassword: 'Wrong0Pass!' }, { noAuth: true }), 401);
+
+  const l = await login(email, pass);
+  expect('Вход', l, 200);
+  if (!token) { add('Дальше без токена идти нельзя', false); return; }
+  add('Роль определена: ' + (role || '?'), role === 'ADMIN' || role === 'USER');
+
+  expect('Профиль /api/me', await api('GET', '/api/me'), 200);
+  expect('Список оборудования', await api('GET', '/api/equipment'), 200);
+  expect('Список в /api/users: ' + (role === 'ADMIN' ? 'админу можно' : 'обычному нельзя'),
+         await api('GET', '/api/users'), role === 'ADMIN' ? 200 : 403);
+
+  const item = { name: 'Автотест ' + Date.now(), labName: 'Тест', hourlyRate: 10, isAvailable: true };
+  const c = await api('POST', '/api/equipment', item);
+  expect('Создание оборудования (' + (role === 'ADMIN' ? 'ADMIN' : 'USER должен получить отказ') + ')',
+         c, role === 'ADMIN' ? 201 : 403);
+
+  if (role === 'ADMIN' && c.ok) {
+    const id = c.data.id;
+    expect('Дубликат оборудования отклонён', await api('POST', '/api/equipment', item), 409);
+    expect('Отрицательная цена отклонена', await api('POST', '/api/equipment', { ...item, name: 'x', hourlyRate: -1 }), 400);
+    expect('Изменение оборудования', await api('PUT', '/api/equipment/' + id, { ...item, hourlyRate: 20, isAvailable: false }), 200);
+    const avail = await api('GET', '/api/equipment?available=true');
+    add('Фильтр «только доступное» скрывает недоступное',
+        avail.ok && !avail.data.some(e => e.id === id));
+    expect('Удаление оборудования', await api('DELETE', '/api/equipment/' + id), 204);
+    expect('После удаления — 404', await api('GET', '/api/equipment/' + id), 404);
+  }
+  add('Автопроверка завершена', true);
+};
+
+setSession(token, role);
+</script>
+</body>
+</html>

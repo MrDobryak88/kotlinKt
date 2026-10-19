@@ -34,6 +34,10 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
 
     implementation("io.ktor:ktor-server-status-pages:${ktorVersion}")
+    implementation("io.ktor:ktor-server-swagger:${ktorVersion}")
+    implementation("io.ktor:ktor-server-openapi:${ktorVersion}")
+    implementation("io.ktor:ktor-server-call-logging-jvm:${ktorVersion}")
+    implementation("io.ktor:ktor-server-websockets-jvm:${ktorVersion}")
 
     // 🔒 Безопасность: JWT + BCrypt
     implementation("io.ktor:ktor-server-auth-jvm:$ktorVersion")

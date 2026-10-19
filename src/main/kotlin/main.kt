@@ -1,10 +1,13 @@
 package com.example
 
 import com.example.database.configureDatabases
+import com.example.plagins.configureDocs
+import com.example.plagins.configureLogging
 import com.example.plagins.configureRouting
 import com.example.plagins.configureSecurity
 import com.example.plagins.configureSerialization
 import com.example.plagins.configureStatusPages
+import com.example.plagins.configureWebSockets
 import com.example.plagins.jwtSettings
 import com.example.repository.EquipmentRepositoryImpl
 import com.example.repository.UserRepositoryImpl
@@ -21,10 +24,13 @@ fun main(args: Array<String>) {
 fun Application.module() {
     val jwt = jwtSettings()
 
+    configureLogging()          // + первым
+    configureWebSockets()       // +
     configureDatabases()
     configureSerialization()
     configureSecurity(jwt)
     configureStatusPages()
+    configureDocs()
 
     val userRepository = UserRepositoryImpl()
     val equipmentRepository = EquipmentRepositoryImpl()

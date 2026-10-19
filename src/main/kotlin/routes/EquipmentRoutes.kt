@@ -3,19 +3,15 @@ package com.example.routes
 import com.example.Exception.ValidationException
 import com.example.models.EquipmentRequest
 import com.example.plagins.JWT_AUTH
+import com.example.plagins.NotificationHub
 import com.example.service.EquipmentService
 import com.example.service.UserService
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.call
-import io.ktor.server.auth.authenticate
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.delete
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.put
-import io.ktor.server.routing.route
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 
 /**
  * Оборудование лаборатории.
@@ -46,20 +42,24 @@ fun Route.equipmentRoutes(userService: UserService, equipmentService: EquipmentS
 
             post {
                 call.requireAdmin(userService)
-                val request = call.receive<EquipmentRequest>()
-                call.respond(HttpStatusCode.Created, equipmentService.create(request))
+                val created = equipmentService.create(call.receive<EquipmentRequest>())
+                NotificationHub.send("EQUIPMENT_CREATED", "Добавлено оборудование")
+                call.respond(HttpStatusCode.Created, created)
             }
 
             put("/{id}") {
                 call.requireAdmin(userService)
                 val id = call.pathId("id")
-                val request = call.receive<EquipmentRequest>()
-                call.respond(equipmentService.update(id, request))
+                val updated = equipmentService.update(id, call.receive<EquipmentRequest>())
+                NotificationHub.send("EQUIPMENT_UPDATED", "Оборудование #$id изменено")
+                call.respond(updated)
             }
 
             delete("/{id}") {
                 call.requireAdmin(userService)
-                equipmentService.delete(call.pathId("id"))
+                val id = call.pathId("id")
+                equipmentService.delete(id)
+                NotificationHub.send("EQUIPMENT_DELETED", "Оборудование #$id удалено")
                 call.respond(HttpStatusCode.NoContent)
             }
         }

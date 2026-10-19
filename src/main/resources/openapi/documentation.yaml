@@ -1,0 +1,92 @@
+openapi: 3.0.3
+info: { title: LabTech Server API, version: 1.0.0 }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    AuthRequest:
+      type: object
+      required: [email, plainPassword]
+      properties:
+        email: { type: string, example: admin@lab.com }
+        plainPassword: { type: string, example: Passw0rd!x }
+    EquipmentRequest:
+      type: object
+      properties:
+        name: { type: string, example: Microscope }
+        labName: { type: string, example: Lab 1 }
+        hourlyRate: { type: number, example: 100 }
+    Error:
+      type: object
+      properties:
+        status: { type: integer }
+        error: { type: string }
+        timestamp: { type: integer, format: int64 }
+paths:
+  /register:
+    post:
+      tags: [Auth]
+      summary: Регистрация (первый пользователь - ADMIN)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AuthRequest' } } }
+      responses:
+        '201': { description: Создан }
+        '400': { description: Ошибка валидации, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /login:
+    post:
+      tags: [Auth]
+      summary: Вход, возвращает JWT
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AuthRequest' } } }
+      responses:
+        '200': { description: 'Токен {"token": "..."}' }
+        '401': { description: Неверные данные }
+  /api/me:
+    get:
+      tags: [Users]
+      summary: Профиль
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK } }
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Список пользователей (ADMIN)
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK }, '403': { description: Нет прав } }
+  /api/equipment:
+    get:
+      tags: [Equipment]
+      summary: Список оборудования
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: available, in: query, schema: { type: boolean } }
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Equipment]
+      summary: Добавить (ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/EquipmentRequest' } } }
+      responses: { '201': { description: Создано }, '403': { description: Нет прав } }
+  /api/equipment/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Equipment]
+      summary: Одна запись
+      security: [{ bearerAuth: [] }]
+      responses: { '200': { description: OK }, '404': { description: Не найдено } }
+    put:
+      tags: [Equipment]
+      summary: Изменить (ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/EquipmentRequest' } } }
+      responses: { '200': { description: OK } }
+    delete:
+      tags: [Equipment]
+      summary: Удалить (ADMIN)
+      security: [{ bearerAuth: [] }]
+      responses: { '204': { description: Удалено } }
